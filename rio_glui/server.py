@@ -7,13 +7,13 @@ from concurrent import futures
 
 import numpy
 
-from rio_tiler.utils import array_to_image, linear_rescale, get_colormap
+from rio_tiler.colormap import cmap
 from rio_tiler.profiles import img_profiles
+from rio_tiler.utils import linear_rescale, render
 from rio_color.operations import parse_operations
 from rio_color.utils import scale_dtype, to_math_type
 
-from tornado import web
-from tornado import gen
+from tornado import gen, web
 from tornado.ioloop import IOLoop
 from tornado.httpserver import HTTPServer
 from tornado.concurrent import run_on_executor
@@ -89,7 +89,7 @@ class TileServer(object):
         settings = {"static_path": os.path.join(os.path.dirname(__file__), "static")}
 
         if colormap:
-            colormap = get_colormap(name=colormap, format="gdal")
+            colormap = cmap.get(name=colormap)
 
         tile_params = dict(raster=self.raster, scale=scale, colormap=colormap)
 
@@ -215,7 +215,7 @@ class RasterTileHandler(web.RequestHandler):
             for bdx in range(nbands):
                 data[bdx] = numpy.where(
                     mask,
-                    linear_rescale(data[bdx], in_range=scale[bdx], out_range=[0, 255]),
+                    linear_rescale(data[bdx], in_range=scale[bdx], out_range=(0, 255)),
                     0,
                 )
 
@@ -227,7 +227,7 @@ class RasterTileHandler(web.RequestHandler):
         options = img_profiles.get(tileformat, {})
 
         return BytesIO(
-            array_to_image(
+            render(
                 data,
                 mask=mask,
                 color_map=self.colormap,

@@ -6,7 +6,7 @@ import mercantile
 import rasterio
 from rasterio.warp import transform_bounds, calculate_default_transform
 
-from rio_tiler.utils import tile_read
+from rio_tiler.reader import part
 
 
 def _meters_per_pixel(zoom, lat):
@@ -146,12 +146,14 @@ class RasterTiles(object):
 
     def read_tile(self, z, x, y):
         """Read raster tile data and mask."""
-        mercator_tile = mercantile.Tile(x=x, y=y, z=z)
-        tile_bounds = mercantile.xy_bounds(mercator_tile)
-        return tile_read(
-            self.path,
-            tile_bounds,
-            self.tiles_size,
-            indexes=self.indexes,
-            nodata=self.nodata,
-        )
+        with rasterio.open(self.path) as src:
+            mercator_tile = mercantile.Tile(x=x, y=y, z=z)
+            tile_bounds = mercantile.xy_bounds(mercator_tile)
+            return part(
+                src,
+                tile_bounds,
+                self.tiles_size,
+                self.tiles_size,
+                indexes=self.indexes,
+                nodata=self.nodata,
+            )

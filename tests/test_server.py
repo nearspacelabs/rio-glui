@@ -6,7 +6,8 @@ import numpy
 from tornado.testing import AsyncHTTPTestCase
 
 import mercantile
-from rio_tiler.utils import tile_read
+import rasterio
+from rio_tiler.reader import part
 
 from rio_glui.raster import RasterTiles
 from rio_glui.server import TileServer
@@ -209,18 +210,20 @@ class CustomRaster(RasterTiles):
 
     def read_tile(self, z, x, y):
         """Read raster tile data and mask."""
-        mercator_tile = mercantile.Tile(x=x, y=y, z=z)
-        tile_bounds = mercantile.xy_bounds(mercator_tile)
+        with rasterio.open(self.path) as src:
+            mercator_tile = mercantile.Tile(x=x, y=y, z=z)
+            tile_bounds = mercantile.xy_bounds(mercator_tile)
 
-        data, mask = tile_read(
-            self.path,
-            tile_bounds,
-            self.tiles_size,
-            indexes=self.indexes,
-            nodata=self.nodata,
-        )
-        data = (data[0] + data[1]) / 2
-        return data.astype(numpy.uint8), mask
+            data, mask = part(
+                src,
+                tile_bounds,
+                self.tiles_size,
+                self.tiles_size,
+                indexes=self.indexes,
+                nodata=self.nodata,
+            )
+            data = (data[0] + data[1]) / 2
+            return data.astype(numpy.uint8), mask
 
 
 class TestHandlersCustom(AsyncHTTPTestCase):
