@@ -136,7 +136,7 @@ class TileServer(object):
 
     def start(self):
         """Start tile server."""
-        is_running = IOLoop.initialized()
+        is_running = IOLoop.current() is not None
         self.server = HTTPServer(self.app)
         self.server.listen(self.port)
 
