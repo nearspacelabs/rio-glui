@@ -4,6 +4,7 @@ import math
 
 import mercantile
 import rasterio
+from rasterio.crs import CRS
 from rasterio.warp import transform_bounds, calculate_default_transform
 
 from rio_tiler.reader import part
@@ -53,10 +54,9 @@ class RasterTiles(object):
             try:
                 assert src.driver == "GTiff"
                 assert src.is_tiled
-                assert src.overviews(1)
-            except (AttributeError, AssertionError, KeyError):
+            except (AttributeError, AssertionError):
                 raise Exception(
-                    "{} is not a valid CloudOptimized Geotiff".format(src_path)
+                    "{} is not a valid Geotiff".format(src_path)
                 )
 
             self.bounds = list(
@@ -69,7 +69,7 @@ class RasterTiles(object):
             self.crs = src.crs
             self.crs_bounds = src.bounds
             self.meta = src.meta
-            self.overiew_levels = src.overviews(1)
+            self.overview_levels = src.overviews(1)
 
     def get_bounds(self):
         """Get raster bounds (WGS84)."""
@@ -128,7 +128,7 @@ class RasterTiles(object):
         )
 
         res_max = max(abs(dst_affine[0]), abs(dst_affine[4]))
-        max_decim = self.overiew_levels[-1]
+        max_decim = self.overview_levels[-1] if len(self.overview_levels) > 0 else 1
         resolution = max_decim * res_max
 
         tgt_z = 0
@@ -152,8 +152,9 @@ class RasterTiles(object):
             return part(
                 src,
                 tile_bounds,
-                self.tiles_size,
-                self.tiles_size,
+                height=self.tiles_size,
+                width=self.tiles_size,
+                bounds_crs=CRS.from_epsg(3857),
                 indexes=self.indexes,
                 nodata=self.nodata,
             )
