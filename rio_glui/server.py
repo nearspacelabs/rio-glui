@@ -123,10 +123,10 @@ class TileServer(object):
             self.port, tileformat
         )
 
-    def get_local_tiles_url(self):
+    def get_local_tiles_url(self, geotiff_name):
         tileformat = "jpg" if self.tiles_format == "jpeg" else self.tiles_format
-        return "http://127.0.0.1:{}/localtiles/{{}}/{{z}}/{{x}}/{{y}}.{}".format(
-            self.port, tileformat
+        return "http://127.0.0.1:{}/localtiles/{}/{{z}}/{{x}}/{{y}}.{}".format(
+            self.port, geotiff_name, tileformat
         )
 
     def get_template_url(self):
@@ -137,13 +137,15 @@ class TileServer(object):
         """Get playground app template url."""
         return "http://127.0.0.1:{}/playground.html".format(self.port)
 
-    def get_bounds(self):
+    def get_bounds(self, geotiff_name=None):
         """Get RasterTiles bounds."""
-        return self.raster.get_bounds()
+        raster = self.raster if geotiff_name is None else self.rasters.get(geotiff_name)
+        return raster.get_bounds()
 
-    def get_center(self):
+    def get_center(self, geotiff_name=None):
         """Get RasterTiles center."""
-        return self.raster.get_center()
+        raster = self.raster if geotiff_name is None else self.rasters.get(geotiff_name)
+        return raster.get_center()
 
     def start(self):
         """Start tile server."""
