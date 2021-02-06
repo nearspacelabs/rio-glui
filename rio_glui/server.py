@@ -18,6 +18,7 @@ from tornado.ioloop import IOLoop
 from tornado.httpserver import HTTPServer
 from tornado.concurrent import run_on_executor
 
+from .raster import RasterTiles
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,8 @@ class TileServer(object):
 
     def __init__(
         self,
-        raster,
+        raster=None,
+        rasters=None,
         scale=None,
         colormap=None,
         tiles_format="png",
@@ -78,7 +80,8 @@ class TileServer(object):
         port=8080,
     ):
         """Initialize Tornado app."""
-        self.raster = raster
+        self.raster = raster if raster else next(iter(rasters.values()))
+        self.rasters = rasters if rasters else dict()
         self.port = port
         self.server = None
         self.tiles_format = tiles_format
@@ -92,6 +95,7 @@ class TileServer(object):
             colormap = cmap.get(name=colormap)
 
         tile_params = dict(raster=self.raster, scale=scale, colormap=colormap)
+        local_tile_params = dict(rasters=rasters, scale=scale, colormap=colormap)
 
         template_params = dict(
             tiles_url=self.get_tiles_url(),
@@ -104,6 +108,7 @@ class TileServer(object):
         self.app = web.Application(
             [
                 (r"^/tiles/(\d+)/(\d+)/(\d+)\.(\w+)", RasterTileHandler, tile_params),
+                (r"^/localtiles/(\w+)/(\d+)/(\d+)/(\d+)\.(\w+)", MultiRasterTileHandler, local_tile_params),
                 (r"^/index.html", IndexTemplate, template_params),
                 (r"^/playground.html", PlaygroundTemplate, template_params),
                 (r"/.*", InvalidAddress),
@@ -115,6 +120,12 @@ class TileServer(object):
         """Get tiles endpoint url."""
         tileformat = "jpg" if self.tiles_format == "jpeg" else self.tiles_format
         return "http://127.0.0.1:{}/tiles/{{z}}/{{x}}/{{y}}.{}".format(
+            self.port, tileformat
+        )
+
+    def get_local_tiles_url(self):
+        tileformat = "jpg" if self.tiles_format == "jpeg" else self.tiles_format
+        return "http://127.0.0.1:{}/localtiles/{{}}/{{z}}/{{x}}/{{y}}.{}".format(
             self.port, tileformat
         )
 
@@ -187,7 +198,8 @@ class RasterTileHandler(web.RequestHandler):
         self.scale = scale
         self.colormap = colormap
 
-    def _apply_color_operations(self, img, color_ops):
+    @staticmethod
+    def apply_color_operations(img, color_ops):
         for ops in parse_operations(color_ops):
             img = scale_dtype(ops(to_math_type(img)), numpy.uint8)
 
@@ -222,7 +234,7 @@ class RasterTileHandler(web.RequestHandler):
             data = data.astype(numpy.uint8)
 
         if color_ops:
-            data = self._apply_color_operations(data, color_ops)
+            data = RasterTileHandler.apply_color_operations(data, color_ops)
 
         options = img_profiles.get(tileformat, {})
 
@@ -249,6 +261,25 @@ class RasterTileHandler(web.RequestHandler):
             int(z), int(x), int(y), tileformat, color_ops=color_ops
         )
         self.write(res.getvalue())
+
+
+class MultiRasterTileHandler(RasterTileHandler):
+    executor = futures.ThreadPoolExecutor(max_workers=16)
+
+    def initialize(self, rasters, scale=None, colormap=None):
+        """Initialize tiles handler."""
+        self.rasters = rasters
+        self.scale = scale
+        self.colormap = colormap
+
+    @gen.coroutine
+    def get(self, geotiff_name, z, x, y, tileformat):
+        raster = self.rasters.get(geotiff_name, None)
+        if raster is None:
+            raise web.HTTPError(404)
+        super().initialize(raster, self.scale, self.colormap)
+
+        yield super().get(z, x, y, tileformat)
 
 
 class Template(web.RequestHandler):
